@@ -1,4 +1,4 @@
-package generated;
+package generated/java;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -45,23 +45,9 @@ public class Vec3Gen {
         }
 
         public void putVarInt64(long v) {
+            ensureCapacity(10);
             // ZigZag encode: (n << 1) ^ (n >> 63)
             long zz = (v << 1) ^ (v >> 63);
-            // FAST PATH: 1 byte (0-127, most common for game data)
-            if ((zz & ~0x7FL) == 0) {
-                if (offset >= capacity) ensureCapacity(1);
-                buf[offset++] = (byte) zz;
-                return;
-            }
-            // FAST PATH: 2 bytes (128-16383)
-            if ((zz & ~0x3FFFL) == 0) {
-                if (offset + 2 > capacity) ensureCapacity(2);
-                buf[offset++] = (byte) ((zz & 0x7F) | 0x80);
-                buf[offset++] = (byte) (zz >>> 7);
-                return;
-            }
-            // General path
-            ensureCapacity(10);
             while ((zz & ~0x7FL) != 0) {
                 buf[offset++] = (byte) ((zz & 0x7F) | 0x80);
                 zz >>>= 7;
@@ -102,19 +88,12 @@ public class Vec3Gen {
         public long getVarInt64() throws Exception {
             long result = 0;
             int shift = 0;
-            // FAST PATH: 1 byte
-            byte b = buf[offset++];
-            if ((b & 0x80) == 0) {
-                result = b & 0x7F;
-            } else {
-                result = b & 0x7F;
-                shift = 7;
-                while (true) {
-                    b = buf[offset++];
-                    result |= (long) (b & 0x7F) << shift;
-                    if ((b & 0x80) == 0) break;
-                    shift += 7;
-                }
+            while (true) {
+                if (offset >= capacity) throw new Exception("Buffer underflow");
+                byte b = buf[offset++];
+                result |= (long) (b & 0x7F) << shift;
+                if ((b & 0x80) == 0) break;
+                shift += 7;
             }
             // ZigZag decode: (n >>> 1) ^ -(n & 1)
             return (result >>> 1) ^ -(result & 1);
@@ -150,7 +129,7 @@ public class Vec3Gen {
         
 
         public byte[] encode() {
-            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(65536);
+            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(1024);
             buf.putString(VERSION);
             encodeTo(buf);
             return buf.array();
@@ -209,7 +188,7 @@ public class Vec3Gen {
         
 
         public byte[] encode() {
-            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(65536);
+            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(1024);
             buf.putString(VERSION);
             encodeTo(buf);
             return buf.array();
@@ -287,7 +266,7 @@ public class Vec3Gen {
         
 
         public byte[] encode() {
-            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(65536);
+            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(1024);
             buf.putString(VERSION);
             encodeTo(buf);
             return buf.array();
@@ -398,7 +377,7 @@ public class Vec3Gen {
         
 
         public byte[] encode() {
-            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(65536);
+            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(1024);
             buf.putString(VERSION);
             encodeTo(buf);
             return buf.array();
@@ -463,7 +442,7 @@ public class Vec3Gen {
         
 
         public byte[] encode() {
-            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(65536);
+            ZeroCopyByteBuff buf = new ZeroCopyByteBuff(1024);
             buf.putString(VERSION);
             encodeTo(buf);
             return buf.array();

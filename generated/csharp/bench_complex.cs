@@ -10,7 +10,7 @@ namespace Generated {
         private byte[] _buf;
         private int _offset;
 
-        public ZeroCopyByteBuff(int capacity = 65536) {
+        public ZeroCopyByteBuff(int capacity = 1024) {
             _buf = new byte[capacity];
             _offset = 0;
         }
@@ -41,20 +41,6 @@ namespace Generated {
 
         public void PutVarInt64(long v) {
             ulong uv = (ulong)v;
-            // FAST PATH: 1 byte (0-127, most common for game data)
-            if ((uv & ~0x7FUL) == 0) {
-                if (_offset >= _buf.Length) EnsureCapacity(1);
-                _buf[_offset++] = (byte)uv;
-                return;
-            }
-            // FAST PATH: 2 bytes (128-16383)
-            if ((uv & ~0x3FFFUL) == 0) {
-                if (_offset + 2 > _buf.Length) EnsureCapacity(2);
-                _buf[_offset++] = (byte)((uv & 0x7F) | 0x80);
-                _buf[_offset++] = (byte)(uv >> 7);
-                return;
-            }
-            // General path
             EnsureCapacity(10);
             while (uv >= 0x80) {
                 _buf[_offset++] = (byte)((uv & 0x7F) | 0x80);
@@ -66,19 +52,12 @@ namespace Generated {
         public long GetVarInt64() {
             ulong result = 0;
             int shift = 0;
-            // FAST PATH: 1 byte
-            byte b = _buf[_offset++];
-            if ((b & 0x80) == 0) {
-                result = (ulong)(b & 0x7F);
-            } else {
-                result = (ulong)(b & 0x7F);
-                shift = 7;
-                while (true) {
-                    b = _buf[_offset++];
-                    result |= (ulong)(b & 0x7F) << shift;
-                    if ((b & 0x80) == 0) break;
-                    shift += 7;
-                }
+            while (true) {
+                if (_offset >= _buf.Length) throw new EndOfStreamException();
+                byte b = _buf[_offset++];
+                result |= (ulong)(b & 0x7F) << shift;
+                if ((b & 0x80) == 0) break;
+                shift += 7;
             }
             return (long)result;
         }
