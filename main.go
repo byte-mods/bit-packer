@@ -457,7 +457,18 @@ type {{.Name}} struct {
 {{end}}
 `
 
-const tmplGoImpl = tmplGoCommon + `
+// tmplGoStructBody is just the struct definitions, no package header
+const tmplGoStructBody = `
+{{range .Classes}}
+type {{.Name}} struct {
+	{{range .Fields}}{{.Name | Title}} {{if .IsArray}}[]{{end}}{{mapTypeGo .Type}} ` + "`" + `json:"{{.Name}}" msgpack:"{{.Name}}"` + "`" + `
+	{{end}}
+}
+{{end}}
+`
+
+// tmplGoImplBody is just the encode/decode methods, no common header
+const tmplGoImplBody = `
 {{range .Classes}}
 func (o *{{.Name}}) Encode() []byte {
 	buf := NewZeroCopyByteBuff(65536)
@@ -509,7 +520,11 @@ func Decode{{.Name}}From(buf *ZeroCopyByteBuff) (*{{.Name}}, error) {
 {{end}}
 `
 
-const tmplGo = tmplGoStructs + "\n" + tmplGoImpl
+// Separate impl template (for --sep mode): includes common header + impls
+const tmplGoImpl = tmplGoCommon + tmplGoImplBody
+
+// Combined template for single-file Go output
+const tmplGo = tmplGoCommon + tmplGoStructBody + tmplGoImplBody
 
 // ==========================================
 // 2. RUST TEMPLATE
@@ -684,7 +699,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
 
     #[inline(always)]
     pub fn get_str(&mut self) -> Result<&'a str, &'static str> {
-		let len = self.get_varint32() as usize;
+		let len = self.get_i32() as usize;
         if len == 0 { return Ok(""); }
         // SAFETY: We assume valid UTF-8 and sufficient length for speed.
         let s_bytes = unsafe { self.data.get_unchecked(self.cursor..self.cursor + len) };
@@ -718,7 +733,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
 	#[inline(always)]
     pub fn put_str(&mut self, value: &str) {
         let len = value.len();
-		self.put_varint32(len as u32);
+		self.put_i32(len as i32);
         // Unsafe copy
         self.write_buf.reserve(len);
         unsafe {
@@ -741,7 +756,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
 
 // --- Generated Classes ---
 {{range .Classes}}
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
 pub struct {{.Name}} {
 	{{range .Fields}}pub {{.Name}}: {{if .IsArray}}Vec<{{mapTypeRust .Type}}>{{else}}{{mapTypeRust .Type}}{{end}},
 	{{end}}
@@ -994,7 +1009,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
 
     #[inline(always)]
     pub fn get_str(&mut self) -> Result<&'a str, &'static str> {
-		let len = self.get_varint32() as usize;
+		let len = self.get_i32() as usize;
         if len == 0 { return Ok(""); }
         // SAFETY: We assume valid UTF-8 and sufficient length for speed.
         let s_bytes = unsafe { self.data.get_unchecked(self.cursor..self.cursor + len) };
@@ -1028,7 +1043,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
 	#[inline(always)]
     pub fn put_str(&mut self, value: &str) {
         let len = value.len();
-		self.put_varint32(len as u32);
+		self.put_i32(len as i32);
         // Unsafe copy
         self.write_buf.reserve(len);
         unsafe {
@@ -2081,14 +2096,14 @@ class ZeroCopyByteBuff {
 
     putString(val) {
         const bytes = this.textEncoder.encode(val);
-        this.putVarInt32(bytes.length);
+        this.putInt32(bytes.length);
         this.ensureCapacity(bytes.length);
         this.writeBuf.set(bytes, this.cursor);
         this.cursor += bytes.length;
     }
 
     getString() {
-        const len = this.getVarInt32();
+        const len = this.getInt32();
         if (len === 0) return "";
         const bytes = this.writeBuf.subarray(this.cursor, this.cursor + len);
         this.cursor += len;

@@ -133,7 +133,7 @@ inline void ZeroCopyByteBuff::putFloat(float v) { putVarInt64(zigzag_encode64((i
 inline void ZeroCopyByteBuff::putDouble(double v) { putVarInt64(zigzag_encode64((int64_t)(v * 10000.0))); }
 inline void ZeroCopyByteBuff::putBool(bool v) { buffer.push_back(v ? 1 : 0); }
 inline void ZeroCopyByteBuff::putString(const std::string& v) {
-    putVarInt64(v.length());
+    putVarInt64(zigzag_encode64(v.length()));
     buffer.insert(buffer.end(), v.begin(), v.end());
 }
 
@@ -147,7 +147,7 @@ inline bool ZeroCopyByteBuff::getBool() {
 }
 
 inline std::string ZeroCopyByteBuff::getString() {
-    size_t len = (size_t)getVarInt64();
+    size_t len = (size_t)zigzag_decode64((uint64_t)getVarInt64());
     if (offset + len > buffer.size()) throw std::runtime_error("Buffer underflow");
     std::string s(buffer.begin() + offset, buffer.begin() + offset + len);
     offset += len;

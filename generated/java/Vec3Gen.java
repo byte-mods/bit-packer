@@ -1,4 +1,4 @@
-package generated/java;
+package generated;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 

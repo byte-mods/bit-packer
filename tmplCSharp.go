@@ -97,7 +97,7 @@ namespace {{.Config.PackageName}} {
         }
         public void PutString(string v) {
             byte[] bytes = Encoding.UTF8.GetBytes(v);
-            PutVarInt64(bytes.Length);
+            PutInt32(bytes.Length);
             EnsureCapacity(bytes.Length);
             Array.Copy(bytes, 0, _buf, _offset, bytes.Length);
             _offset += bytes.Length;
@@ -112,7 +112,7 @@ namespace {{.Config.PackageName}} {
              return _buf[_offset++] != 0;
         }
         public string GetString() {
-            int len = (int)GetVarInt64();
+            int len = GetInt32();
             if (_offset + len > _buf.Length) throw new EndOfStreamException();
             string s = Encoding.UTF8.GetString(_buf, _offset, len);
             _offset += len;

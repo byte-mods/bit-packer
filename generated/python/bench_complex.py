@@ -2,13 +2,95 @@ import struct
 import zlib
 import sys
 
-# Try to import C extension
+# Try to import C extension for best performance
+_USING_C_EXT = False
 try:
     from _bitpacker import ZeroCopyByteBuff
+    _USING_C_EXT = True
 except ImportError:
-    print("❌ Error: BitPacker C Extension not found.", file=sys.stderr)
-    print("   Please run: python3 setup.py build_ext --inplace", file=sys.stderr)
-    sys.exit(1)
+    # Pure-Python fallback — works out of the box, but C extension is ~10x faster
+    # To build C extension: python3 setup.py build_ext --inplace
+    class ZeroCopyByteBuff:
+        def __init__(self, data=None):
+            if data is not None:
+                self._buf = bytearray(data)
+                self._offset = 0
+            else:
+                self._buf = bytearray(65536)
+                self._offset = 0
+                self._write_pos = 0
+
+        def _ensure(self, n):
+            while self._write_pos + n > len(self._buf):
+                self._buf.extend(bytearray(len(self._buf)))
+
+        def _put_varint(self, v):
+            zz = (v << 1) ^ (v >> 63)
+            zz &= 0xFFFFFFFFFFFFFFFF
+            if zz < 0x80:
+                self._ensure(1)
+                self._buf[self._write_pos] = zz
+                self._write_pos += 1
+                return
+            if zz < 0x4000:
+                self._ensure(2)
+                self._buf[self._write_pos] = (zz & 0x7F) | 0x80
+                self._buf[self._write_pos + 1] = zz >> 7
+                self._write_pos += 2
+                return
+            self._ensure(10)
+            while zz > 0x7F:
+                self._buf[self._write_pos] = (zz & 0x7F) | 0x80
+                self._write_pos += 1
+                zz >>= 7
+            self._buf[self._write_pos] = zz
+            self._write_pos += 1
+
+        def _get_varint(self):
+            result = 0
+            shift = 0
+            while True:
+                b = self._buf[self._offset]
+                self._offset += 1
+                result |= (b & 0x7F) << shift
+                if not (b & 0x80):
+                    break
+                shift += 7
+            return (result >> 1) ^ -(result & 1)
+
+        def put_int32(self, v): self._put_varint(v)
+        def put_int64(self, v): self._put_varint(v)
+        def put_varint64(self, v): self._put_varint(v)
+        def put_float(self, v): self._put_varint(int(v * 10000.0))
+        def put_double(self, v): self._put_varint(int(v * 10000.0))
+        def put_bool(self, v):
+            self._ensure(1)
+            self._buf[self._write_pos] = 1 if v else 0
+            self._write_pos += 1
+        def put_string(self, v):
+            b = v.encode('utf-8')
+            self._put_varint(len(b))
+            self._ensure(len(b))
+            self._buf[self._write_pos:self._write_pos + len(b)] = b
+            self._write_pos += len(b)
+        def ensure_capacity(self, n): self._ensure(n)
+
+        def get_int32(self): return self._get_varint()
+        def get_int64(self): return self._get_varint()
+        def get_varint64(self): return self._get_varint()
+        def get_float(self): return self._get_varint() / 10000.0
+        def get_double(self): return self._get_varint() / 10000.0
+        def get_bool(self):
+            v = self._buf[self._offset] != 0
+            self._offset += 1
+            return v
+        def get_string(self):
+            length = self._get_varint()
+            s = self._buf[self._offset:self._offset + length].decode('utf-8')
+            self._offset += length
+            return s
+        def get_bytes(self):
+            return bytes(self._buf[:self._write_pos])
 
 VERSION = "1.0.0"
 
