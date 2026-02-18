@@ -4,7 +4,7 @@ import random
 import time
 
 # Ensure we can import the generated code
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../generated/python_bench/python")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "generated/python_bench/python")))
 
 from bench_complex import WorldState, Guild, Character, Item, Vec3
 

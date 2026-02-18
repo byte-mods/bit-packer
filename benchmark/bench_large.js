@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { WorldState } = require('../generated/js_bench');
+const { WorldState } = require('./generated/js_bench/js/vec3');
 
 const fileName = 'large_payload.bin';
 let filePath = path.join(__dirname, '..', fileName);

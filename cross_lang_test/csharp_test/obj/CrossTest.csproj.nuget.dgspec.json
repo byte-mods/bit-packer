@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/csharp_test/CrossTest.csproj": {}
+    "/Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/csharp_test/CrossTest.csproj": {}
   },
   "projects": {
-    "/Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/csharp_test/CrossTest.csproj": {
+    "/Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/csharp_test/CrossTest.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/csharp_test/CrossTest.csproj",
+        "projectUniqueName": "/Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/csharp_test/CrossTest.csproj",
         "projectName": "CrossTest",
-        "projectPath": "/Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/csharp_test/CrossTest.csproj",
+        "projectPath": "/Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/csharp_test/CrossTest.csproj",
         "packagesPath": "/Users/sudeepdasgupta/.nuget/packages/",
-        "outputPath": "/Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/csharp_test/obj/",
+        "outputPath": "/Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/csharp_test/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/sudeepdasgupta/.nuget/NuGet/NuGet.Config"

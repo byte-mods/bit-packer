@@ -172,7 +172,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
 
     #[inline(always)]
     pub fn get_str(&mut self) -> Result<&'a str, &'static str> {
-        let len = self.get_varint32() as usize;
+        let len = self.get_i32() as usize;
         if len == 0 {
             return Ok("");
         }
@@ -208,7 +208,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
     #[inline(always)]
     pub fn put_str(&mut self, value: &str) {
         let len = value.len();
-        self.put_varint32(len as u32);
+        self.put_i32(len as i32);
         // Unsafe copy
         self.write_buf.reserve(len);
         unsafe {

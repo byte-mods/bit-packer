@@ -24,3 +24,12 @@ flatbuffers = "25.12.19"
 
 [build-dependencies]
 prost-build = "0.12"
+
+[[bin]]
+name = "benchmark"
+path = "src/main.rs"
+
+[[bin]]
+name = "bench_large"
+path = "src/bench_large.rs"
+

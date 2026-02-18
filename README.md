@@ -80,6 +80,22 @@ All benchmarks use identical data: **1,000 guilds × 20 characters × 10 items**
 - **FlatBuffers excels at zero-copy decode** (0.000s) but has higher encode times and larger payloads
 - **No external runtime dependencies** — BitPacker generates self-contained code
 
+### Large Dataset Benchmark (105 MB)
+
+For a larger dataset containing **32,829 guilds** (approx. 105 MB binary payload), BitPacker demonstrates excellent scaling:
+
+| Language | Decode Time | Encode Time |
+|---|---|---|
+| **C++** | 0.12s | 0.12s |
+| **Rust** | 0.23s | 0.10s |
+| **Java** | 0.18s | 0.21s |
+| **Go** | 0.26s | 0.11s |
+| **C#** | 0.61s | 0.32s |
+| **Node.js** | 0.70s | 1.53s |
+| **Python** | 5.70s | 6.00s |
+
+> **Note:** Tests run on a MacBook Pro (Apple Silicon). Java and C# performance is notable, with Java nearly matching C++ in decoding speed for this workload.
+
 ---
 
 ## 📦 Installation
@@ -210,7 +226,52 @@ Every generated class includes:
 
 ## 💻 Language-Specific Usage Examples
 
+### Rust
+
+```rust
+// generated (mod game;)
+use game::{WorldState, Guild, Character, Item, Vec3};
+
+fn main() {
+    // Create data
+    let mut world = WorldState {
+        world_id: 1,
+        seed: "my_seed".to_string(),
+        guilds: vec![
+            Guild {
+                name: "Warriors".to_string(),
+                description: "A guild of warriors".to_string(),
+                members: vec![
+                    Character {
+                        name: "Hero".to_string(),
+                        level: 99,
+                        hp: 1000,
+                        mp: 500,
+                        is_alive: true,
+                        position: Vec3 { x: 10, y: 20, z: 30 },
+                        skills: vec![1, 2, 3],
+                        inventory: vec![
+                             Item { id: 1, name: "Sword".to_string(), value: 100, weight: 5, rarity: "Rare".to_string() }
+                        ],
+                    }
+                ],
+            }
+        ],
+        loot_table: Vec::new(),
+    };
+
+    // Encode
+    let data = world.encode().expect("Failed to encode");
+    println!("Serialized: {} bytes", data.len());
+
+    // Decode
+    let decoded = WorldState::decode(&data).expect("Failed to decode");
+    println!("Guild: {}", decoded.guilds[0].name);
+}
+```
+
 ### Go
+
 
 ```go
 package main

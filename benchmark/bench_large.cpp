@@ -2,7 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <chrono>
-#include "../generated/cpp_bench/cpp/bench_complex.hpp"
+#include "generated/cpp_bench/cpp/bench_complex.hpp"
 
 int main() {
     std::string fileName = "large_payload.bin";

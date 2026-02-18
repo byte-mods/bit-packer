@@ -15,7 +15,7 @@ import (
 	// Actually, let's put it in benchmark/go_large/main.go and use replace directive in go.mod there.
 	// But for simplicity, let's try to run it from root.
 
-	bp "bit-parser/generated/go_bench/go"
+	bp "bit-parser/benchmark/generated/go_bench/go"
 )
 
 func main() {

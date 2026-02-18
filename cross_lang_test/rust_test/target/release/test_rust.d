@@ -1,1 +1,1 @@
-/Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/rust_test/target/release/test_rust: /Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/rust_test/src/lib.rs /Users/sudeepdasgupta/projects/bit-parser/cross_lang_test/rust_test/src/main.rs
+/Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/rust_test/target/release/test_rust: /Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/rust_test/src/lib.rs /Users/sudeepdasgupta/projects/bit-packer/cross_lang_test/rust_test/src/main.rs
