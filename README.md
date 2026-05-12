@@ -106,7 +106,7 @@ For a larger dataset containing **32,829 guilds** (approx. 105 MB binary payload
 ### Build from Source
 
 ```bash
-git clone https://github.com/AugustineJelagworworworworworworworworwor/bitpacker.git
+git clone https://github.com/byte-mods/bit-packer.git
 cd bitpacker
 go build -o bitpacker ./cmd/bitpacker
 # Or install globally:
