@@ -548,11 +548,15 @@ pub enum Endian {
 }
 
 pub struct ZeroCopyByteBuff<'a> {
-    data: &'a [u8],       
-    write_buf: Vec<u8>,   
+    data: &'a [u8],
+    write_buf: Vec<u8>,
     cursor: usize,
     multiplier: f64,
     endian: Endian,
+    /// Set when a read ran past the end of the buffer or hit malformed data.
+    /// Reads keep their infallible signatures and return a default value, and
+    /// decode() turns the flag into an error once the whole document is read.
+    failed: bool,
 }
 
 impl<'a> ZeroCopyByteBuff<'a> {
@@ -563,6 +567,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
             cursor: 0,
             multiplier: 10000.0,
             endian,
+            failed: false,
         }
     }
 
@@ -573,6 +578,7 @@ impl<'a> ZeroCopyByteBuff<'a> {
             cursor: 0,
             multiplier: 10000.0,
             endian,
+            failed: false,
         }
     }
 
@@ -597,14 +603,44 @@ impl<'a> ZeroCopyByteBuff<'a> {
 		((n >> 1) as i64) ^ (-((n & 1) as i64))
 	}
 
+	/// Marks the buffer unusable. Every later read returns a default value so
+	/// a malformed document cannot steer decoding, and decode() reports it.
+	#[cold]
+	#[inline(never)]
+	fn fail(&mut self) {
+		self.failed = true;
+		self.cursor = self.data.len();
+	}
+
+	#[inline(always)]
+	pub fn failed(&self) -> bool {
+		self.failed
+	}
+
+	/// Bytes still unread. Used to sanity-check lengths read from the document.
+	#[inline(always)]
+	pub fn remaining(&self) -> usize {
+		self.data.len().saturating_sub(self.cursor)
+	}
+
 	#[inline(always)]
 	fn get_varint32(&mut self) -> u32 {
 		let mut result: u32 = 0;
 		let mut shift = 0;
-        // Optimization: Unrolled loop for common case (1-5 bytes)
 		loop {
-            // SAFETY: We trust the data source. Unchecked access is faster.
-			let byte = unsafe { *self.data.get_unchecked(self.cursor) };
+			// A varint32 is at most 5 bytes; more than that is malformed and
+			// would shift past the width of the type.
+			if shift > 28 {
+				self.fail();
+				return 0;
+			}
+			let byte = match self.data.get(self.cursor) {
+				Some(byte) => *byte,
+				None => {
+					self.fail();
+					return 0;
+				}
+			};
 			self.cursor += 1;
 			result |= ((byte & 0x7F) as u32) << shift;
 			if byte & 0x80 == 0 {
@@ -647,8 +683,18 @@ impl<'a> ZeroCopyByteBuff<'a> {
 		let mut result: u64 = 0;
 		let mut shift = 0;
 		loop {
-            // SAFETY: Unchecked access
-			let byte = unsafe { *self.data.get_unchecked(self.cursor) };
+			// A varint64 is at most 10 bytes.
+			if shift > 63 {
+				self.fail();
+				return 0;
+			}
+			let byte = match self.data.get(self.cursor) {
+				Some(byte) => *byte,
+				None => {
+					self.fail();
+					return 0;
+				}
+			};
 			self.cursor += 1;
 			result |= ((byte & 0x7F) as u64) << shift;
 			if byte & 0x80 == 0 {
@@ -694,21 +740,46 @@ impl<'a> ZeroCopyByteBuff<'a> {
 
 	#[inline(always)]
     pub fn get_bool(&mut self) -> bool {
-        // SAFETY: Unchecked access
-        let b = unsafe { *self.data.get_unchecked(self.cursor) };
+        let b = match self.data.get(self.cursor) {
+            Some(b) => *b,
+            None => {
+                self.fail();
+                return false;
+            }
+        };
         self.cursor += 1;
 		b != 0
     }
 
     #[inline(always)]
     pub fn get_str(&mut self) -> Result<&'a str, &'static str> {
-		let len = self.get_i32() as usize;
+		let len = self.get_i32();
+        if len < 0 {
+            self.fail();
+            return Err("negative string length");
+        }
+        let len = len as usize;
         if len == 0 { return Ok(""); }
-        // SAFETY: We assume valid UTF-8 and sufficient length for speed.
-        let s_bytes = unsafe { self.data.get_unchecked(self.cursor..self.cursor + len) };
-        self.cursor += len;
-        // SAFETY: Skipping UTF-8 check
-        Ok(unsafe { str::from_utf8_unchecked(s_bytes) })
+        // The length comes from the document being decoded, so it is not
+        // trustworthy: it has to be checked against what is actually here
+        // before it is used to slice, and the bytes have to be validated as
+        // UTF-8 rather than assumed to be.
+        let end = match self.cursor.checked_add(len) {
+            Some(end) if end <= self.data.len() => end,
+            _ => {
+                self.fail();
+                return Err("string length past end of buffer");
+            }
+        };
+        let s_bytes = &self.data[self.cursor..end];
+        self.cursor = end;
+        match str::from_utf8(s_bytes) {
+            Ok(s) => Ok(s),
+            Err(_) => {
+                self.fail();
+                Err("string is not valid UTF-8")
+            }
+        }
     }
 
     #[inline(always)]
@@ -810,7 +881,11 @@ impl {{.Name}} {
 			return Err(Error::new(ErrorKind::InvalidData, format!("Version Mismatch: Expected {}, got {}", VERSION, v_str)));
 		}
 
-        Self::decode_from(&mut buf)
+        let decoded = Self::decode_from(&mut buf)?;
+        if buf.failed() {
+            return Err(Error::new(ErrorKind::InvalidData, "Truncated or malformed BitPacker document"));
+        }
+        Ok(decoded)
     }
 
     pub fn decode_from(buf: &mut ZeroCopyByteBuff) -> Result<Self, Error> {
@@ -818,9 +893,19 @@ impl {{.Name}} {
 		{{range .Fields}}
 		{{if .IsArray}}
 		let {{.Name}}_len = buf.get_i32();
+		// Every element occupies at least one byte, so a count larger than
+		// what is left in the buffer is malformed. Checking it here stops a
+		// hostile length from driving a huge allocation or a long loop.
+		if {{.Name}}_len < 0 || ({{.Name}}_len as usize) > buf.remaining() {
+			return Err(Error::new(ErrorKind::InvalidData, "Array length exceeds remaining data"));
+		}
+		obj.{{.Name}}.reserve({{.Name}}_len as usize);
 		for _ in 0..{{.Name}}_len {
 			{{decodeFieldRust "let val" .Type}}
 			obj.{{.Name}}.push(val);
+			if buf.failed() {
+				return Err(Error::new(ErrorKind::InvalidData, "Truncated BitPacker document"));
+			}
 		}
 		{{else}}
 		{{decodeFieldRust (printf "obj.%s" .Name) .Type}}
@@ -858,11 +943,15 @@ pub enum Endian {
 }
 
 pub struct ZeroCopyByteBuff<'a> {
-    data: &'a [u8],       
-    write_buf: Vec<u8>,   
+    data: &'a [u8],
+    write_buf: Vec<u8>,
     cursor: usize,
     multiplier: f64,
     endian: Endian,
+    /// Set when a read ran past the end of the buffer or hit malformed data.
+    /// Reads keep their infallible signatures and return a default value, and
+    /// decode() turns the flag into an error once the whole document is read.
+    failed: bool,
 }
 
 impl<'a> ZeroCopyByteBuff<'a> {
@@ -907,14 +996,44 @@ impl<'a> ZeroCopyByteBuff<'a> {
 		((n >> 1) as i64) ^ (-((n & 1) as i64))
 	}
 
+	/// Marks the buffer unusable. Every later read returns a default value so
+	/// a malformed document cannot steer decoding, and decode() reports it.
+	#[cold]
+	#[inline(never)]
+	fn fail(&mut self) {
+		self.failed = true;
+		self.cursor = self.data.len();
+	}
+
+	#[inline(always)]
+	pub fn failed(&self) -> bool {
+		self.failed
+	}
+
+	/// Bytes still unread. Used to sanity-check lengths read from the document.
+	#[inline(always)]
+	pub fn remaining(&self) -> usize {
+		self.data.len().saturating_sub(self.cursor)
+	}
+
 	#[inline(always)]
 	fn get_varint32(&mut self) -> u32 {
 		let mut result: u32 = 0;
 		let mut shift = 0;
-        // Optimization: Unrolled loop for common case (1-5 bytes)
 		loop {
-            // SAFETY: We trust the data source. Unchecked access is faster.
-			let byte = unsafe { *self.data.get_unchecked(self.cursor) };
+			// A varint32 is at most 5 bytes; more than that is malformed and
+			// would shift past the width of the type.
+			if shift > 28 {
+				self.fail();
+				return 0;
+			}
+			let byte = match self.data.get(self.cursor) {
+				Some(byte) => *byte,
+				None => {
+					self.fail();
+					return 0;
+				}
+			};
 			self.cursor += 1;
 			result |= ((byte & 0x7F) as u32) << shift;
 			if byte & 0x80 == 0 {
@@ -957,8 +1076,18 @@ impl<'a> ZeroCopyByteBuff<'a> {
 		let mut result: u64 = 0;
 		let mut shift = 0;
 		loop {
-            // SAFETY: Unchecked access
-			let byte = unsafe { *self.data.get_unchecked(self.cursor) };
+			// A varint64 is at most 10 bytes.
+			if shift > 63 {
+				self.fail();
+				return 0;
+			}
+			let byte = match self.data.get(self.cursor) {
+				Some(byte) => *byte,
+				None => {
+					self.fail();
+					return 0;
+				}
+			};
 			self.cursor += 1;
 			result |= ((byte & 0x7F) as u64) << shift;
 			if byte & 0x80 == 0 {
@@ -1004,21 +1133,46 @@ impl<'a> ZeroCopyByteBuff<'a> {
 
 	#[inline(always)]
     pub fn get_bool(&mut self) -> bool {
-        // SAFETY: Unchecked access
-        let b = unsafe { *self.data.get_unchecked(self.cursor) };
+        let b = match self.data.get(self.cursor) {
+            Some(b) => *b,
+            None => {
+                self.fail();
+                return false;
+            }
+        };
         self.cursor += 1;
 		b != 0
     }
 
     #[inline(always)]
     pub fn get_str(&mut self) -> Result<&'a str, &'static str> {
-		let len = self.get_i32() as usize;
+		let len = self.get_i32();
+        if len < 0 {
+            self.fail();
+            return Err("negative string length");
+        }
+        let len = len as usize;
         if len == 0 { return Ok(""); }
-        // SAFETY: We assume valid UTF-8 and sufficient length for speed.
-        let s_bytes = unsafe { self.data.get_unchecked(self.cursor..self.cursor + len) };
-        self.cursor += len;
-        // SAFETY: Skipping UTF-8 check
-        Ok(unsafe { str::from_utf8_unchecked(s_bytes) })
+        // The length comes from the document being decoded, so it is not
+        // trustworthy: it has to be checked against what is actually here
+        // before it is used to slice, and the bytes have to be validated as
+        // UTF-8 rather than assumed to be.
+        let end = match self.cursor.checked_add(len) {
+            Some(end) if end <= self.data.len() => end,
+            _ => {
+                self.fail();
+                return Err("string length past end of buffer");
+            }
+        };
+        let s_bytes = &self.data[self.cursor..end];
+        self.cursor = end;
+        match str::from_utf8(s_bytes) {
+            Ok(s) => Ok(s),
+            Err(_) => {
+                self.fail();
+                Err("string is not valid UTF-8")
+            }
+        }
     }
 
     #[inline(always)]
@@ -1114,7 +1268,11 @@ impl {{.Name}} {
 			return Err(Error::new(ErrorKind::InvalidData, format!("Version Mismatch: Expected {}, got {}", VERSION, v_str)));
 		}
 
-        Self::decode_from(&mut buf)
+        let decoded = Self::decode_from(&mut buf)?;
+        if buf.failed() {
+            return Err(Error::new(ErrorKind::InvalidData, "Truncated or malformed BitPacker document"));
+        }
+        Ok(decoded)
     }
 
     pub fn decode_from(buf: &mut ZeroCopyByteBuff) -> Result<Self, Error> {
@@ -1122,9 +1280,19 @@ impl {{.Name}} {
 		{{range .Fields}}
 		{{if .IsArray}}
 		let {{.Name}}_len = buf.get_i32();
+		// Every element occupies at least one byte, so a count larger than
+		// what is left in the buffer is malformed. Checking it here stops a
+		// hostile length from driving a huge allocation or a long loop.
+		if {{.Name}}_len < 0 || ({{.Name}}_len as usize) > buf.remaining() {
+			return Err(Error::new(ErrorKind::InvalidData, "Array length exceeds remaining data"));
+		}
+		obj.{{.Name}}.reserve({{.Name}}_len as usize);
 		for _ in 0..{{.Name}}_len {
 			{{decodeFieldRust "let val" .Type}}
 			obj.{{.Name}}.push(val);
+			if buf.failed() {
+				return Err(Error::new(ErrorKind::InvalidData, "Truncated BitPacker document"));
+			}
 		}
 		{{else}}
 		{{decodeFieldRust (printf "obj.%s" .Name) .Type}}
