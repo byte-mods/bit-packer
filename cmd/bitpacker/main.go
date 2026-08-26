@@ -42,7 +42,7 @@ type GeneratorConfig struct {
 // --- Main Entry Point ---
 func main() {
 	schemaPath := flag.String("file", "", "Path to the .buff schema file")
-	langs := flag.String("lang", "go,rust,python,java,csharp,js,php", "Target languages")
+	langs := flag.String("lang", "go,rust,python,java,csharp,js,dart,php", "Target languages")
 	outDir := flag.String("out", "./generated", "Output directory")
 	compress := flag.Bool("compress", false, "Enable Zlib compression")
 	sep := flag.Bool("sep", false, "Generate separate files for structs and impls (Rust only)")
@@ -260,6 +260,9 @@ func generateCode(lang string, classes []Class, cfg GeneratorConfig) error {
 	case "javascript", "js":
 		tmplStr = tmplJS
 		fileName = strings.ToLower(baseName) + ".js"
+	case "dart":
+		tmplStr = tmplDart
+		fileName = strings.ToLower(baseName) + ".dart"
 	case "php":
 		tmplStr = tmplPHP
 		fileName = baseName + ".php"
@@ -2410,6 +2413,12 @@ func funcMap(cfg GeneratorConfig) template.FuncMap {
 		"defaultValueJS": defaultValueJS,
 		"encodeFieldJS":  encodeFieldJS,
 		"decodeFieldJS":  decodeFieldJS,
+		// Dart Helpers
+		"mapTypeDart":        mapTypeDart,
+		"defaultValueDart":   defaultValueDart,
+		"encodeFieldDart":    encodeFieldDart,
+		"decodeFieldDart":    decodeFieldDart,
+		"decodeFieldDartAdd": decodeFieldDartAdd,
 		// PHP Helpers (FIXED)
 		"encodeFieldPHP": func(name, t string) string {
 			if t == "string" {

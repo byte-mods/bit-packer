@@ -2,7 +2,7 @@
 
 **A high-performance, schema-driven binary serialization tool for game development and real-time applications.**
 
-BitPacker generates type-safe serialization code for **Rust, Go, C++, C#, Java, JavaScript, and Python** from a simple `.buff` schema file. It produces significantly smaller payloads and faster encoding/decoding compared to JSON, MessagePack, Protocol Buffers, and FlatBuffers — without sacrificing cross-language compatibility.
+BitPacker generates type-safe serialization code for **Rust, Go, C++, C#, Java, JavaScript, Dart, and Python** from a simple `.buff` schema file. It produces significantly smaller payloads and faster encoding/decoding compared to JSON, MessagePack, Protocol Buffers, and FlatBuffers — without sacrificing cross-language compatibility.
 
 ---
 
@@ -16,7 +16,7 @@ BitPacker generates type-safe serialization code for **Rust, Go, C++, C#, Java, 
 | **VarInt/ZigZag encoding** | ✅ | ❌ | ✅ | ✅ | ❌ |
 | **Payload size** | ⭐ Smallest | Largest | Medium | Small | Medium |
 | **Encoding speed** | ⭐ Fastest | Slowest | Medium | Fast | Fast |
-| **Language support** | 7 languages | Universal | Most | Most | Most |
+| **Language support** | 8 languages | Universal | Most | Most | Most |
 | **External dependencies** | ❌ None | Varies | Varies | Runtime lib | Runtime lib |
 | **Code complexity** | Low | Low | Low | Medium | High |
 
@@ -203,6 +203,9 @@ bitpacker --file game.buff --lang python --out ./gen/python
 
 # JavaScript
 bitpacker --file game.buff --lang js --out ./gen/js
+
+# Dart (Flutter-ready, uses only dart:typed_data + dart:convert)
+bitpacker --file game.buff --lang dart --out ./gen/dart
 ```
 
 **CLI Flags:**
@@ -210,7 +213,7 @@ bitpacker --file game.buff --lang js --out ./gen/js
 | Flag | Description |
 |---|---|
 | `--file` | Path to the `.buff` schema file |
-| `--lang` | Target language: `go`, `cpp`, `csharp`, `java`, `python`, `js` |
+| `--lang` | Target language: `go`, `cpp`, `csharp`, `java`, `python`, `js`, `dart` |
 | `--out` | Output directory for generated files |
 | `--package` | Package/namespace name (Go, Java, C#). Defaults: Go=`bitpacker`, Java=`generated`, C#=`Generated` |
 | `--sep` | Generate separate files for structs and impls (Go/Rust only) |
@@ -547,6 +550,47 @@ const decoded = WorldState.decode(data);
 console.log(`Guild: ${decoded.guilds[0].name}`);
 ```
 
+### Dart
+
+Generated Dart depends only on `dart:typed_data` and `dart:convert`, so it works in Flutter (mobile, desktop, web) and standalone Dart with no pub dependencies.
+
+```dart
+import 'gen/dart/vec3.dart';
+
+void main() {
+  // Create data
+  final hero = Character()
+    ..name = "Hero"
+    ..level = 99
+    ..hp = 1000
+    ..mp = 500
+    ..is_alive = true
+    ..position = (Vec3()..x = 10..y = 20..z = 30)
+    ..skills = [1, 2, 3]
+    ..inventory = [
+      Item()..id = 1..name = "Sword"..value = 100..weight = 5..rarity = "Rare"
+    ];
+
+  final world = WorldState()
+    ..world_id = 1
+    ..seed = "my_seed"
+    ..guilds = [
+      Guild()
+        ..name = "Warriors"
+        ..description = "A guild of warriors"
+        ..members = [hero]
+    ];
+
+  // Encode
+  final data = world.encode(); // Uint8List
+  print('Serialized: ${data.length} bytes');
+
+  // Decode
+  final decoded = WorldState.decode(data);
+  print('Guild: ${decoded.guilds[0].name}');
+}
+```
+
 ---
 
 ## 🏗 Production Usage Guide
@@ -584,6 +628,7 @@ bitpacker --file $SCHEMA --lang csharp --out generated/csharp
 bitpacker --file $SCHEMA --lang java   --out generated/java --package com.myapp.models
 bitpacker --file $SCHEMA --lang python --out generated/python
 bitpacker --file $SCHEMA --lang js     --out generated/js
+bitpacker --file $SCHEMA --lang dart   --out generated/dart
 
 echo "✅ All languages generated!"
 ```
